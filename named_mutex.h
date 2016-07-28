@@ -54,6 +54,7 @@ public:
 	~AutoMutex()
 	{
 		m_mutex->unlock();
+		array.ReleaseMutex(key);
 	}
 
 private:
