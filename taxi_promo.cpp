@@ -30,16 +30,19 @@ int64_t GetCurrentDT()
 	return (microsec_clock::local_time() - time_epoch).total_milliseconds();
 }
 
-result CheckAndUpdateOrder(Order& order, bool& orderExists)
+result CheckAndUpdateOrder(Order& order, bool& orderExists, bool wasOrderRemoved)
 {
 	orderExists = false;
+	wasOrderRemoved = false;
+	
 	if (order.state == Order::Pending)
 	{
 		const auto nowPlusPendingDelay = (GetCurrentDT() + DELAY_FOR_PENDING_TRANSACTIONS);
 		if (order.last_modified.asInt64() > nowPlusPendingDelay)
 		{
 			// Order hangs, we have to remove it
-			return order.Remove();
+			CHECK_AND_RETURN(order.Remove());
+			wasOrderRemoved = true;
 		}
 		else
 		{
@@ -52,7 +55,8 @@ result CheckAndUpdateOrder(Order& order, bool& orderExists)
 		const auto nowPlusUncompletedDelay = (GetCurrentDT() + DELAY_FOR_UNCOMPLETED_TRANSACTIONS);
 		if (order.last_modified.asInt64() > nowPlusUncompletedDelay)
 		{
-			return order.Remove();
+			CHECK_AND_RETURN(order.Remove());
+			wasOrderRemoved = true;
 		}
 		else
 		{
@@ -60,7 +64,7 @@ result CheckAndUpdateOrder(Order& order, bool& orderExists)
 			return result_code::sOk;
 		}
 	}
-	
+
 	orderExists = false;
 	return result_code::sOk;
 }
@@ -89,12 +93,16 @@ result CreateOrder(const std::string& user_id,
 			// Probably there is an order
 			if (promoCode.order_id.isSet())
 			{
+				CHECK_AND_RETURN(order.FindById(promoCode.order_id));
+				bool orderExists(false), wasOrderRemoved(false);
 
-				order.FindById(promoCode.order_id);
-				bool orderExists(false);
-				result r = CheckAndUpdateOrder(order, orderExists);
+				CHECK_AND_RETURN(CheckAndUpdateOrder(order, orderExists, wasOrderRemoved));
+				
 				if (orderExists)
 		        	return result_code::ePromoCodeLocked;
+
+				if (wasOrderRemoved)
+					CHECK_AND_RETURN(promoCode.Update(BSON("$unset" << BSON("order_id" << mongo::OID(order_id)))));	
 			}
 
 			if (promoCode.name.empty())
@@ -183,7 +191,15 @@ result UpdateOrder(const std::string& order_id, Completion completion)
 		if (completion == Cancel)
 		{
 			AutoMutex mutex(g_ordersMxs, order_id);
-			return Order::Remove(std::make_shared<MongoConnection>(), order_id);
+
+			std::shared_ptr<MongoConnection> mongo = std::make_shared<MongoConnection>();
+			Order 	  order(order_id, mongo);
+			PromoCode promoCode(order.promoCodeName, mongo, false);
+
+			CHECK_AND_RETURN(promoCode.Update(BSON("$unset" << BSON("order_id" << mongo::OID(order_id)))));
+			CHECK_AND_RETURN(order.Remove());
+
+			return result_code::sOk;
 		}
 		else if (completion == Success)
 		{

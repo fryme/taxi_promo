@@ -84,7 +84,6 @@ TEST_F(TaxiPromoTest, CreateSecondOrderByOnePromoCode)
     ASSERT_TRUE(orderId.empty());
 }
 
-
 TEST_F(TaxiPromoTest, CancelOrder)
 {
 	string orderId;
@@ -94,6 +93,21 @@ TEST_F(TaxiPromoTest, CancelOrder)
     string user, promo;
 	int state;
     ASSERT_TRUE(FAILED(GetOrderInfo(orderId, user, promo, state)));
+}
+
+TEST_F(TaxiPromoTest, CancelOrderAndThenRideAgain)
+{
+	string orderId;
+	ASSERT_TRUE(SUCCEEDED(CreateOrder(user1, promoCode1, orderId)));
+    ASSERT_FALSE(orderId.empty());
+
+    ASSERT_TRUE(SUCCEEDED(UpdateOrder(orderId, Cancel)));
+    string user, promo;
+	int state;
+    ASSERT_TRUE(FAILED(GetOrderInfo(orderId, user, promo, state)));
+
+    ASSERT_TRUE(SUCCEEDED(CreateOrder(user2, promoCode1, orderId)));
+    ASSERT_FALSE(orderId.empty());
 }
 
 int main(int argc, char **argv) {
