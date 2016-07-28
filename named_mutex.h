@@ -33,6 +33,7 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_accessMutex);
 		m_mutexes.erase(key);
+		return result_code::sOk;
 	}
 
 private:
@@ -45,19 +46,24 @@ private:
 class AutoMutex
 {
 public:
-	AutoMutex(NamedMutexArray& array, const std::string& key)
+	AutoMutex(NamedMutexArray& array_, const std::string& key) : 
+		m_key(key),
+		m_array(array_)
 	{
-		array.GetMutex(key, m_mutex);
+		m_array.GetMutex(m_key, m_mutex);
 		m_mutex->lock();
 	}
 
 	~AutoMutex()
 	{
 		m_mutex->unlock();
+		m_array.ReleaseMutex(m_key);
 	}
 
 private:
 	std::shared_ptr<std::mutex> m_mutex;
+	std::string m_key;
+	NamedMutexArray& m_array;
 };
 
 
